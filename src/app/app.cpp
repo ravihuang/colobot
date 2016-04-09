@@ -1094,20 +1094,43 @@ int CApplication::Run()
             StartPerformanceCounter(PCNT_UPDATE_ALL);
 
             // Prepare and process step simulation event
-            Event event = CreateUpdateEvent();
-            if (event.type != EVENT_NULL && m_controller != nullptr)
+            if (!m_simulationSuspended)
             {
-                LogEvent(event);
+                m_systemUtils->CopyTimeStamp(m_lastTimeStamp, m_curTimeStamp);
+                m_systemUtils->GetCurrentTimeStamp(m_curTimeStamp);
 
-                m_sound->FrameMove(m_relTime);
+                long long absDiff = m_systemUtils->TimeStampExactDiff(m_baseTimeStamp, m_curTimeStamp);
+                long long newRealAbsTime = m_realAbsTimeBase + absDiff;
+                long long newRealRelTime = m_systemUtils->TimeStampExactDiff(m_lastTimeStamp, m_curTimeStamp);
 
-                StartPerformanceCounter(PCNT_UPDATE_GAME);
-                m_controller->ProcessEvent(event);
-                StopPerformanceCounter(PCNT_UPDATE_GAME);
+                if (newRealAbsTime < m_realAbsTime || newRealRelTime < 0)
+                {
+                    GetLogger()->Error("Fatal error: got negative system counter difference!\n");
+                    GetLogger()->Error("This should never happen. Please report this error.\n");
+                    m_eventQueue->AddEvent(Event(EVENT_SYS_QUIT));
+                }
+                else
+                {
+                    while (m_realAbsTime + TIME_STEP < newRealAbsTime)
+                    {
+                        Event event = CreateUpdateEvent(TIME_STEP);
+                        if (event.type == EVENT_NULL) break;
 
-                StartPerformanceCounter(PCNT_UPDATE_ENGINE);
-                m_engine->FrameUpdate();
-                StopPerformanceCounter(PCNT_UPDATE_ENGINE);
+                        LogEvent(event);
+
+                        m_sound->FrameMove(m_relTime);
+
+                        // TODO: PCNT_UPDATE_GAME and PCNT_UPDATE_ENGINE will be probably displaying only the latest update
+
+                        StartPerformanceCounter(PCNT_UPDATE_GAME);
+                        m_controller->ProcessEvent(event);
+                        StopPerformanceCounter(PCNT_UPDATE_GAME);
+
+                        StartPerformanceCounter(PCNT_UPDATE_ENGINE);
+                        m_engine->FrameUpdate();
+                        StopPerformanceCounter(PCNT_UPDATE_ENGINE);
+                    }
+                }
             }
 
             StopPerformanceCounter(PCNT_UPDATE_ALL);
@@ -1473,36 +1496,16 @@ void CApplication::SetSimulationSpeed(float speed)
     GetLogger()->Info("Simulation speed = %.2f\n", speed);
 }
 
-Event CApplication::CreateUpdateEvent()
+Event CApplication::CreateUpdateEvent(long long step)
 {
-    if (m_simulationSuspended)
-        return Event(EVENT_NULL);
+    m_realAbsTime += step / m_simulationSpeed;
+    // m_baseTimeStamp is updated on simulation speed change, so this is OK
+    m_exactAbsTime += step;
+    m_absTime += step / 1e9f;
 
-    m_systemUtils->CopyTimeStamp(m_lastTimeStamp, m_curTimeStamp);
-    m_systemUtils->GetCurrentTimeStamp(m_curTimeStamp);
-
-    long long absDiff = m_systemUtils->TimeStampExactDiff(m_baseTimeStamp, m_curTimeStamp);
-    long long newRealAbsTime = m_realAbsTimeBase + absDiff;
-    long long newRealRelTime = m_systemUtils->TimeStampExactDiff(m_lastTimeStamp, m_curTimeStamp);
-
-    if (newRealAbsTime < m_realAbsTime || newRealRelTime < 0)
-    {
-        GetLogger()->Error("Fatal error: got negative system counter difference!\n");
-        GetLogger()->Error("This should never happen. Please report this error.\n");
-        m_eventQueue->AddEvent(Event(EVENT_SYS_QUIT));
-        return Event(EVENT_NULL);
-    }
-    else
-    {
-        m_realAbsTime = newRealAbsTime;
-        // m_baseTimeStamp is updated on simulation speed change, so this is OK
-        m_exactAbsTime = m_absTimeBase + m_simulationSpeed * absDiff;
-        m_absTime = (m_absTimeBase + m_simulationSpeed * absDiff) / 1e9f;
-
-        m_realRelTime = newRealRelTime;
-        m_exactRelTime = m_simulationSpeed * m_realRelTime;
-        m_relTime = (m_simulationSpeed * m_realRelTime) / 1e9f;
-    }
+    m_realRelTime = step / m_simulationSpeed;
+    m_exactRelTime = step;
+    m_relTime = step / 1e9f;
 
     Event frameEvent(EVENT_FRAME);
     frameEvent.rTime = m_relTime;

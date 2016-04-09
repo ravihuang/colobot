@@ -134,6 +134,8 @@ enum DebugMode
 
 struct ApplicationPrivate;
 
+const long long TIME_STEP = (1.f / 100.f) * 1e9;
+
 /**
  * \class CApplication
  * \brief Main application
@@ -321,7 +323,7 @@ protected:
     //! If applicable, creates a virtual event to match the changed state as of new event
     Event       CreateVirtualEvent(const Event& sourceEvent);
     //! Prepares a simulation update event
-    TEST_VIRTUAL Event CreateUpdateEvent();
+    TEST_VIRTUAL Event CreateUpdateEvent(long long step);
     //! Logs debug data for event
     void        LogEvent(const Event& event);
 
