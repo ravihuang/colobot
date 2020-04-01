@@ -40,7 +40,9 @@ pipeline {
                     post {
                         success {
                             sh 'rm -f windows-debug.zip'
-                            zip zipFile: 'windows-debug.zip', archive: true, dir: 'build/windows/install'
+                            script{
+                              zip zipFile: 'windows-debug.zip', archive: true, dir: 'build/windows/install'
+                            }
                         }
                     }
                 }
@@ -90,7 +92,9 @@ pipeline {
                                     cp -p Colobot-x86_64.AppImage appimage/colobot
                                 '''
                             }
-                            zip zipFile: 'linux-debug.zip', archive: true, dir: 'build/linux/appimage'
+                            script{
+                                zip zipFile: 'linux-debug.zip', archive: true, dir: 'build/linux/appimage'
+                            }
                         }
                     }
                 }
